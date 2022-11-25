@@ -1,25 +1,60 @@
-const { encrypt, compare } = require("../services/crypto");
+const { encrypt, compare, generateToken } = require("../services/crypto");
 const { generateOTP } = require("../services/OTP");
 const { sendMail } = require("../services/MAIL");
 const User = require("../model/User");
+const bcrypt = require("bcrypt");
 
 module.exports.signUpUser = async (req, res) => {
-  // const { name, email, password } = req.body;
-  const name = req.body.name;
-  const email = req.body.email;
-  const password = req.body.password;
-  const isExisting = await findUserByEmail(email);
+  const isExisting = await findUserByEmail(req.body.email);
   if (isExisting) {
-    return res.send("Already existing");
+    return res.status(409).send({ message: "Already existing" });
   }
   // create new user
-  const newUser = await createUser(name, email, password);
+  const newUser = await createUser(
+    req.body.name,
+    req.body.email,
+    req.body.password
+  );
   if (!newUser[0]) {
     return res.status(400).send({
       message: "Unable to create new user",
     });
   }
   res.send(newUser);
+};
+
+module.exports.signInUser = async (req, res) => {
+  const user = await User.findOne({ email: req.body.email });
+  if (user) {
+    if (bcrypt.compareSync(req.body.password, user.password)) {
+      const otpGenerated = generateOTP();
+      await User.findByIdAndUpdate(
+        user._id,
+        {
+          $set: { otp: otpGenerated },
+        },
+        { new: true }
+      );
+      try {
+        await sendMail({
+          to: req.body.email,
+          OTP: otpGenerated,
+        });
+        // return [true, user];
+      } catch (error) {
+        return [false, "Unable to sign in, Please try again later", error];
+      }
+      res.send({
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        otp: otpGenerated,
+        token: generateToken(user),
+      });
+      return;
+    }
+  }
+  res.status(401).send({ message: "Invalid email or password" });
 };
 
 module.exports.verifyEmail = async (req, res) => {
@@ -40,7 +75,7 @@ const findUserByEmail = async (email) => {
 };
 
 const createUser = async (name, email, password) => {
-  const hashedPassword = await encrypt(password);
+  const hashedPassword = bcrypt.hashSync(password, 8);
   const otpGenerated = generateOTP();
   const newUser = await User.create({
     name,
@@ -51,12 +86,13 @@ const createUser = async (name, email, password) => {
   if (!newUser) {
     return [false, "Unable to sign you up"];
   }
+  const token = generateToken(newUser);
   try {
     await sendMail({
       to: email,
       OTP: otpGenerated,
     });
-    return [true, newUser];
+    return [true, newUser, token];
   } catch (error) {
     return [false, "Unable to sign up, Please try again later", error];
   }

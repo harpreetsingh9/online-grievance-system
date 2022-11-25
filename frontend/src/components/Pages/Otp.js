@@ -31,7 +31,7 @@ export default function Otp() {
         navigate('/dashboard');
       }
       else{
-        alert(error.msg);
+        alert("Invalid otp");
       }
     } catch(err){
       console.log(err);

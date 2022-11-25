@@ -37,7 +37,7 @@ const Registration = () => {
     ) {
       if (actualData.password === actualData.password_confirmation) {
         try {
-          await axios.post("http://localhost:5000/auth/", actualData);
+          const res = await axios.post("http://localhost:5000/auth/signup", actualData);
           setError({
             status: true,
             msg: "Registration Successful",
@@ -49,6 +49,11 @@ const Registration = () => {
             },
           });
         } catch (err) {
+          setError({
+            status: true,
+            msg: err.message,
+            type: "error",
+          });
           console.log(err);
         }
       } else {
